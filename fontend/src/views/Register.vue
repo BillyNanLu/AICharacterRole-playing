@@ -1,41 +1,57 @@
-<script setup>
-import { reactive, ref } from 'vue'
-import { register } from '@/api/user'
+<template>
+  <div class="register">
+    <el-card class="box-card">
+      <h2>注册</h2>
+      <el-form :model="form" @submit.prevent="handleRegister" label-width="80px">
+        <el-form-item label="用户名">
+          <el-input v-model="form.username" />
+        </el-form-item>
+        <el-form-item label="邮箱">
+          <el-input v-model="form.email" />
+        </el-form-item>
+        <el-form-item label="密码">
+          <el-input v-model="form.password" type="password" />
+        </el-form-item>
+        <el-form-item>
+          <el-button type="primary" @click="handleRegister">注册</el-button>
+          <el-button type="text" @click="toLogin">去登录</el-button>
+        </el-form-item>
+      </el-form>
+    </el-card>
+  </div>
+</template>
 
+<script setup>
+import { reactive } from 'vue'
+import { registerUser } from '@/api/user'
+import { useRouter } from 'vue-router'
+import { ElMessage } from 'element-plus'
+
+const router = useRouter()
 const form = reactive({
   username: '',
   email: '',
   password: ''
 })
-const error = ref('')
 
 const handleRegister = async () => {
   try {
-    await register(form)
-    alert('注册成功')
-    // 可以跳转到登录页
+    await registerUser(form)
+    ElMessage.success('注册成功')
+    router.push('/login')
   } catch (err) {
-    error.value = err.response?.data?.message || '注册失败'
+    ElMessage.error(err.response?.data?.message || '注册失败')
   }
+}
+
+const toLogin = () => {
+  router.push('/login')
 }
 </script>
 
-<template>
-  <div class="register">
-    <h2>注册</h2>
-    <form @submit.prevent="handleRegister">
-      <input v-model="form.username" placeholder="用户名" required />
-      <input v-model="form.email" placeholder="邮箱" type="email" required />
-      <input v-model="form.password" placeholder="密码" type="password" required />
-      <button type="submit">注册</button>
-    </form>
-    <p v-if="error">{{ error }}</p>
-  </div>
-</template>
-
 <style scoped>
 .register {
-  max-width: 300px;
-  margin: auto;
+  width: 400px;
+  margin: 100px auto;
 }
 </style>
