@@ -14,6 +14,9 @@ public interface UserMapper {
     @Select("SELECT * FROM users WHERE email = #{email}")
     User findByEmail(String email);
 
+    @Select("SELECT * FROM users WHERE id = #{id}")
+    User findById(Long id);
+
     @Insert("INSERT INTO users(username, password, email, user_pic, create_time, update_time) " +
             "VALUES(#{username}, #{password}, #{email}, #{userPic}, #{createTime}, #{updateTime})")
     @Options(useGeneratedKeys = true, keyProperty = "id")

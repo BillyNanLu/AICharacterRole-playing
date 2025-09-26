@@ -19,10 +19,11 @@
 </template>
 
 <script setup>
-import { reactive, ref } from 'vue'
+import { reactive } from 'vue'
 import { loginUser } from '@/api/user'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
+import { useUserStore } from '@/stores/user'
 
 const router = useRouter()
 const form = reactive({
@@ -30,10 +31,12 @@ const form = reactive({
   password: ''
 })
 
+const store = useUserStore()
 const handleLogin = async () => {
   try {
     const res = await loginUser(form)
-    localStorage.setItem('username', res.data.username)
+    // 后端返回 token + user
+    store.setUserData(res.data.token, res.data.user)
     ElMessage.success('登录成功')
     router.push('/home')
   } catch (err) {
