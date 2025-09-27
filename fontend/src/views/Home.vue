@@ -1,47 +1,86 @@
-<script>
+<script setup>
+import { ref, onMounted } from 'vue'
 import axios from 'axios'
+import { ElMessage } from 'element-plus'
 
-export default {
-  data() {
-    return {
-      role: '',
-      skill: '',
-      recording: false,
-      mediaRecorder: null,
-      audioChunks: [],
-      userText: '',
-      assistantText: '',
-      ttsAudio: ''
-    }
-  },
-  methods: {
-    async startRecord() {
-      this.recording = true
-      this.audioChunks = []
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      this.mediaRecorder = new MediaRecorder(stream)
-      this.mediaRecorder.ondataavailable = e => {
-        if (e.data.size > 0) this.audioChunks.push(e.data)
-      }
-      this.mediaRecorder.start()
-    },
-    async stopRecord() {
-      this.recording = false
-      this.mediaRecorder.stop()
-      this.mediaRecorder.onstop = async () => {
-        const blob = new Blob(this.audioChunks, { type: 'audio/webm' })
-        const formData = new FormData()
-        formData.append('role', this.role)
-        formData.append('skill', this.skill)
-        formData.append('audio', blob, 'input.webm')
+// 这里你可以从路由参数或者 localStorage 获取当前会话 ID
+// 先写死一个conversationId做测试
+const conversationId = 1
 
-        const res = await axios.post('/api/chat/voice', formData, {
-          headers: { 'Content-Type': 'multipart/form-data' }
-        })
-        this.userText = res.data.userText
-        this.assistantText = res.data.assistantText
-        this.ttsAudio = 'data:audio/mp3;base64,' + res.data.ttsAudioBase64
-      }
+const role = ref('')
+const skill = ref('')
+const recording = ref(false)
+const mediaRecorder = ref(null)
+const audioChunks = ref([])
+
+const userText = ref('')
+const assistantText = ref('')
+const ttsAudio = ref('')
+
+// 历史消息
+const messages = ref([])
+
+// 拉取历史消息
+const fetchMessages = async () => {
+  try {
+    const res = await axios.get(`/api/messages/${conversationId}`)
+    messages.value = res.data
+  } catch (e) {
+    ElMessage.error('获取消息失败')
+  }
+}
+
+onMounted(() => {
+  fetchMessages()
+})
+
+const startRecord = async () => {
+  recording.value = true
+  audioChunks.value = []
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+  mediaRecorder.value = new MediaRecorder(stream)
+  mediaRecorder.value.ondataavailable = e => {
+    if (e.data.size > 0) audioChunks.value.push(e.data)
+  }
+  mediaRecorder.value.start()
+}
+
+const stopRecord = async () => {
+  recording.value = false
+  mediaRecorder.value.stop()
+  mediaRecorder.value.onstop = async () => {
+    const blob = new Blob(audioChunks.value, { type: 'audio/webm' })
+    const formData = new FormData()
+    formData.append('role', role.value)
+    formData.append('skill', skill.value)
+    formData.append('audio', blob, 'input.webm')
+    formData.append('conversationId', conversationId)
+
+    try {
+      const res = await axios.post('/api/chat/voice', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      })
+      // 后端返回识别文本+AI文本+tts音频
+      userText.value = res.data.userText
+      assistantText.value = res.data.assistantText
+      ttsAudio.value = 'data:audio/mp3;base64,' + res.data.ttsAudioBase64
+
+      // 把消息存数据库
+      await axios.post('/api/messages', {
+        conversationId,
+        sender: 'user',
+        content: userText.value
+      })
+      await axios.post('/api/messages', {
+        conversationId,
+        sender: 'ai',
+        content: assistantText.value
+      })
+
+      // 刷新消息列表
+      fetchMessages()
+    } catch (e) {
+      ElMessage.error('发送失败')
     }
   }
 }
@@ -62,20 +101,24 @@ export default {
 
     <div class="button-group">
       <el-button type="danger" :disabled="recording" @click="startRecord">
-        <el-icon><i class="el-icon-microphone"></i></el-icon> 开始录音
+        🎙️ 开始录音
       </el-button>
       <el-button type="success" :disabled="!recording" @click="stopRecord">
-        <el-icon><i class="el-icon-video-pause"></i></el-icon> 停止录音并发送
+        ⏹️ 停止录音并发送
       </el-button>
     </div>
 
-    <el-card shadow="hover" class="chat-card">
-      <p><strong>识别文本：</strong>{{ userText || '等待录音识别...' }}</p>
-    </el-card>
-
-    <el-card shadow="hover" class="chat-card">
-      <p><strong>AI 回复：</strong>{{ assistantText || '等待AI响应...' }}</p>
-    </el-card>
+    <!-- 历史消息列表 -->
+    <div class="messages">
+      <div
+          v-for="msg in messages"
+          :key="msg.id"
+          :class="['bubble', msg.sender === 'user' ? 'user' : 'ai']"
+      >
+        <strong>{{ msg.sender === 'user' ? '我' : 'AI' }}：</strong>
+        {{ msg.content }}
+      </div>
+    </div>
 
     <div class="audio-player" v-if="ttsAudio">
       <span class="audio-label">AI语音：</span>
@@ -101,8 +144,29 @@ export default {
   margin-bottom: 1rem;
 }
 
-.chat-card {
-  margin-top: 1rem;
+.messages {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-height: 300px;
+  overflow-y: auto;
+  margin-bottom: 1rem;
+}
+
+.bubble {
+  padding: 0.5rem 1rem;
+  border-radius: 12px;
+  max-width: 70%;
+}
+
+.user {
+  background-color: #e0f2fe;
+  align-self: flex-end;
+}
+
+.ai {
+  background-color: #f0fdf4;
+  align-self: flex-start;
 }
 
 .audio-player {
